@@ -250,8 +250,33 @@ def _update_quota_gauges(stop_event: threading.Event):
     from .database import SessionLocal
 
     while not stop_event.is_set():
+        db = None
         try:
             db = SessionLocal()
+            saas_schema_ready = db.execute(
+                sa_text(
+                    """
+                    SELECT
+                        to_regclass('saas.subscriptions') IS NOT NULL
+                        AND to_regclass('saas.clients') IS NOT NULL
+                        AND to_regclass('saas.plans') IS NOT NULL
+                        AND to_regclass('saas.api_keys') IS NOT NULL
+                        AND to_regclass('saas.usage_logs') IS NOT NULL
+                    """
+                )
+            ).scalar()
+
+            # The SaaS schema is optional in the self-hosted SINAPI stack.
+            # Do not emit a traceback every minute when that module is not
+            # installed; the API itself remains fully available.
+            if not saas_schema_ready:
+                if QUOTA_GAUGE is not None:
+                    QUOTA_GAUGE.clear()
+                logger.info(
+                    "Quota gauge disabled: optional SaaS schema is not installed"
+                )
+                return
+
             rows = db.execute(
                 sa_text(
                     """
@@ -280,9 +305,10 @@ def _update_quota_gauges(stop_event: threading.Event):
                     pct = (row.total_usage / row.monthly_quota * 100) if row.monthly_quota > 0 else 0.0
                     QUOTA_GAUGE.labels(client=row.client_name, plan=row.plan_slug).set(pct)
         except Exception:
-            logger.warning("Quota gauge update failed (DB likely unavailable)", exc_info=True)
+            logger.warning("Quota gauge update failed", exc_info=True)
         finally:
-            db.close()
+            if db is not None:
+                db.close()
         stop_event.wait(60)
 
 
@@ -403,7 +429,7 @@ def base_availability(db: Session = Depends(get_db)):
     })
 
 # Conexão direta com Redis para lock de tarefas (idempotência)
-redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "autosinapi_redis"), port=6379, db=0)
+redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0)
 
 @app.get("/api/v1/public/stats", tags=["tier_1", "Public"], summary="Obter estatísticas do banco de dados", response_description="Volumetria geral do banco de dados SINAPI.", responses=_RATE_LIMIT_RESPONSE)
 def get_database_stats(db: Session = Depends(get_db)):

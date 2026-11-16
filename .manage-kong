@@ -1,5 +1,0 @@
-username: dev_lucas
-key: yUjvftcfA1FWceSFH56nwpNDtZ0ye7oU
-
-# Testes:
-curl -i -X GET "http://localhost:8000/insumos/search/?q=CIMENTO" -H "X-API-KEY: yUjvftcfA1FWceSFH56nwpNDtZ0ye7oU"

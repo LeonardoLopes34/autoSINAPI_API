@@ -6,6 +6,16 @@ services:
 - name: sinapi-api
   url: http://api:8000
   routes:
+  - name: api-docs
+    paths:
+    - /docs
+    - /openapi.json
+    - /redoc
+    methods:
+    - GET
+    - OPTIONS
+    strip_path: false
+
   - name: sinapi-route
     paths:
     - /

@@ -52,9 +52,9 @@ class Settings(BaseSettings):
         return get_sandbox_table_name("manutencoes_historico")
 
     # --- Configurações de Cache ---
-    # SSOT: nome único da stack (evita colisão do alias genérico "redis"
-    # no server_mesh, que round-robina para server_redis de outra stack).
-    REDIS_HOST: str = "autosinapi_redis"
+    # Nome do serviço Docker Compose. O container_name é sinapi_redis, mas
+    # o DNS interno da rede da aplicação deve usar o nome do serviço: redis.
+    REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
     CACHE_DEFAULT_TTL: int = 86400  # 24 horas
 

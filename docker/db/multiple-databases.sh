@@ -20,26 +20,48 @@ create_user_and_database() {
     password=$2
     db=$3
     echo "Creating user '$user' and database '$db'"
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$DEFAULT_DB" <<-EOSQL
-        DO \$$
-        BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$user') THEN
-                CREATE USER $user WITH PASSWORD '$password';
-            END IF;
-        END
-        \$$;
-
-        SELECT 'CREATE DATABASE $db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$db');
+    psql -v ON_ERROR_STOP=1 \
+        --username "$POSTGRES_USER" \
+        --dbname "$DEFAULT_DB" \
+        --set=target_user="$user" \
+        --set=target_password="$password" \
+        --set=target_database="$db" <<-'EOSQL'
+        SELECT format(
+            'CREATE ROLE %I LOGIN PASSWORD %L',
+            :'target_user',
+            :'target_password'
+        )
+        WHERE NOT EXISTS (
+            SELECT 1 FROM pg_roles WHERE rolname = :'target_user'
+        );
         \gexec
 
-        GRANT ALL PRIVILEGES ON DATABASE $db TO $user;
+        SELECT format(
+            'ALTER ROLE %I WITH LOGIN PASSWORD %L',
+            :'target_user',
+            :'target_password'
+        );
+        \gexec
+
+        SELECT format('CREATE DATABASE %I', :'target_database')
+        WHERE NOT EXISTS (
+            SELECT 1 FROM pg_database WHERE datname = :'target_database'
+        );
+        \gexec
+
+        SELECT format(
+            'GRANT ALL PRIVILEGES ON DATABASE %I TO %I',
+            :'target_database',
+            :'target_user'
+        );
+        \gexec
 
         -- Conecta ao novo banco e concede permissões ao usuário
-        \c $db
-        GRANT ALL ON SCHEMA public TO $user;
-        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $user;
-        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $user;
-        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO $user;
+        \connect :target_database
+        GRANT ALL ON SCHEMA public TO :"target_user";
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO :"target_user";
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO :"target_user";
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO :"target_user";
 EOSQL
 }
 

@@ -7,21 +7,17 @@ services:
     hostname: db
     env_file: .env
     environment:
-      - POSTGRES_MULTIPLE_DATABASES=sinapi,kong
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - KONG_PG_USER=${KONG_PG_USER}
-      - KONG_PG_PASSWORD=${KONG_PG_PASSWORD}
+      POSTGRES_MULTIPLE_DATABASES: sinapi,kong
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/db/multiple-databases.sh:/docker-entrypoint-initdb.d/multiple-databases.sh
-    ports:
-      - "127.0.0.1:5432:5432"
+    #ports:
+    #  - "127.0.0.1:5432:5432"
     restart: unless-stopped
     networks:
       - sinapi-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kong -d kong"]
+      test: ["CMD-SHELL", "PGPASSWORD=$$POSTGRES_PASSWORD psql -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB -c 'SELECT 1' >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,6 +26,9 @@ services:
     container_name: sinapi_api
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      REDIS_HOST: redis
     volumes:
       - ./autosinapi_downloads:/app/downloads
     depends_on:
@@ -51,6 +50,9 @@ services:
     container_name: sinapi_worker
     command: celery -A api.tasks.celery_app worker --loglevel=info
     env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      REDIS_HOST: redis
     volumes:
       - ./autosinapi_downloads:/app/downloads
     depends_on:
@@ -66,23 +68,23 @@ services:
     container_name: kong_migrations
     env_file: .env
     environment:
-      - KONG_DATABASE=postgres
-      - KONG_PG_DATABASE=kong
-      - KONG_PG_HOST=db
-      - KONG_PG_USER=${KONG_PG_USER}
-      - KONG_PG_PASSWORD=${KONG_PG_PASSWORD}
-    command: >
-      sh -c "
-        echo 'Waiting for PostgreSQL user \"kong\" to be created...';
-        until pg_isready -h db -U ${KONG_PG_USER} -d kong;
-        do
-          echo 'Waiting for database...';
-          sleep 2;
-        done;
-        echo 'User \"kong\" is ready. Resetting and running Kong migrations...';
-        kong migrations reset -y && kong migrations bootstrap && kong config db_import /usr/local/kong/declarative/kong.yml || sleep 3600
-        #kong migrations bootstrap --vv
-      "
+      KONG_DATABASE: postgres
+      KONG_PG_DATABASE: kong
+      KONG_PG_HOST: db
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        sh /usr/local/bin/ensure-kong-db.sh
+        echo 'Kong database credentials are ready. Running Kong migrations...'
+        if kong migrations bootstrap; then
+          echo 'Kong database bootstrapped.'
+        else
+          echo 'Kong database already bootstrapped. Applying pending migrations...'
+          kong migrations up
+          kong migrations finish
+        fi
+        kong config db_import /usr/local/kong/declarative/kong.yml
     depends_on:
       db:
         condition: service_healthy
@@ -91,6 +93,7 @@ services:
       - sinapi-net
     volumes:
       - ./kong:/usr/local/kong/declarative
+      - ./docker/db/ensure-kong-db.sh:/usr/local/bin/ensure-kong-db.sh:ro
 
   kong:
     #image: kong:3.4
@@ -98,21 +101,21 @@ services:
     container_name: sinapi_gateway
     env_file: .env
     environment:
-      - KONG_DATABASE=postgres
-      - KONG_PG_DATABASE=kong
-      - KONG_PG_HOST=db
-      - KONG_PG_USER=${KONG_PG_USER}
-      - KONG_PG_PASSWORD=${KONG_PG_PASSWORD}
-      - KONG_PROXY_ACCESS_LOG=/dev/stdout
-      - KONG_ADMIN_ACCESS_LOG=/dev/stdout
-      - KONG_PROXY_ERROR_LOG=/dev/stderr
-      - KONG_ADMIN_ERROR_LOG=/dev/stderr
-      - KONG_ADMIN_LISTEN=0.0.0.0:8001
+      KONG_DATABASE: postgres
+      KONG_PG_DATABASE: kong
+      KONG_PG_HOST: db
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
     depends_on:
       kong-migrations:
         condition: service_completed_successfully
     ports:
       - "8000:8000"
+      # Admin API disponível somente no host local.
+      - "127.0.0.1:8001:8001"
     restart: unless-stopped
     networks:
       - sinapi-net
@@ -122,11 +125,11 @@ services:
       timeout: 5s
       retries: 5
 
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    restart: unless-stopped
-    container_name: cloudflared_tunnel
+  # tunnel:
+  #   image: cloudflare/cloudflared:latest
+  #   command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   restart: unless-stopped
+  #   container_name: cloudflared_tunnel
 
 
 volumes:

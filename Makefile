@@ -12,6 +12,9 @@ up:
 
 down:
 	@echo "Parando e removendo os containers, redes e volumes..."
+	docker compose down 
+
+clean:
 	docker compose down -v
 
 populate-db:

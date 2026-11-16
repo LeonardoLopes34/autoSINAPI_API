@@ -47,7 +47,12 @@ def run_populate_task(db_config: dict, sinapi_config: dict, lock_token: str = No
             sinapi_config=sinapi_config,
             mode='server'
         )
-        if result.get("status") == "success":
+        # O toolkit retorna os status em português ("SUCESSO"/"FALHA"),
+        # enquanto tarefas auxiliares podem retornar a forma inglesa.
+        # Normalizar aqui garante que o cache seja invalidado após uma carga
+        # concluída, independentemente da variante usada pelo executor.
+        result_status = str(result.get("status", "")).strip().lower()
+        if result_status in {"success", "sucesso"}:
             _invalidate_caches()
         return result
     finally:
@@ -76,7 +81,8 @@ def populate_sinapi_task(self, db_config: dict, sinapi_config: dict, lock_token:
     """
     result = run_populate_task(db_config, sinapi_config, lock_token=lock_token)
 
-    if result.get("status") == "failure":
+    result_status = str(result.get("status", "")).strip().lower()
+    if result_status in {"failure", "falha"}:
         msg = result.get("message", "")
         if "Too Many Requests" in msg or "429" in msg:
             raise self.retry(countdown=600)
