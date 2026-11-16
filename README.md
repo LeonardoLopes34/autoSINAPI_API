@@ -11,6 +11,29 @@ Nós transformamos o caos de arquivos ZIP e PDFs da Caixa em uma API RESTful int
 
 ---
 
+### 🏗️ Este fork: uso local com o projeto-erp
+
+Fork de [LAMP-LUCAS/autoSINAPI_API](https://github.com/LAMP-LUCAS/autoSINAPI_API) (GPLv3), branch `local-dev`.
+Aqui a API fica exposta direto em `127.0.0.1:8200` e o Kong é opcional, porque a porta 8000 é da API de licitações
+e o backend do ERP já guarda a chave.
+
+```bash
+git clone --recursive -b local-dev https://github.com/LeonardoLopes34/autoSINAPI_API.git
+cp .env.example .env          # troque as senhas
+docker compose up -d --build  # db, redis, api (8200) e celery_worker
+```
+
+Carga de um mês: a Caixa bloqueia download automatizado (429), então baixe o zip no navegador e coloque em
+`autosinapi_downloads/AAAA_MM/` (ex.: `2026_07/SINAPI-2026-07-formato-xlsx.zip`). Depois (~2 min):
+
+```bash
+docker compose exec api python -c "import autosinapi; print(autosinapi.run_etl(sinapi_config={'year': 2026, 'month': 7, 'type': 'REFERENCIA', 'duplicate_policy': 'substituir'}, mode='server')['status'])"
+```
+
+Gateway Kong, só se for expor publicamente: `docker compose --profile gateway up -d`.
+
+---
+
 ### 💡 O Fim da Dor de Cabeça Mensal
 
 Se você trabalha com orçamentos de obra, sabe o quão repetitivo e frustrante é o processo de usar os dados do SINAPI. Nós também sabíamos, e por isso criamos uma solução.

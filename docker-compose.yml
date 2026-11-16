@@ -29,8 +29,12 @@ services:
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
       REDIS_HOST: redis
+      PG_HOST: db  # usado pelo ETL (autosinapi); o padrão dele é o servidor do autor
     volumes:
       - ./autosinapi_downloads:/app/downloads
+    # Acesso direto para o ERP, só pela máquina local. A 8000 fica para a API de licitações.
+    ports:
+      - "127.0.0.1:8200:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -53,6 +57,7 @@ services:
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
       REDIS_HOST: redis
+      PG_HOST: db
     volumes:
       - ./autosinapi_downloads:/app/downloads
     depends_on:
@@ -62,9 +67,12 @@ services:
     networks:
       - sinapi-net
 
+  # Kong só sobe com `docker compose --profile gateway up -d` (exposição pública).
+  # O ERP acessa a API direto na 8200 e guarda a chave no próprio backend.
   kong-migrations:
     #image: kong:3.4
     build: ./kong/
+    profiles: ["gateway"]
     container_name: kong_migrations
     env_file: .env
     environment:
@@ -98,6 +106,7 @@ services:
   kong:
     #image: kong:3.4
     build: ./kong/
+    profiles: ["gateway"]
     container_name: sinapi_gateway
     env_file: .env
     environment:
