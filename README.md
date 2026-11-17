@@ -32,6 +32,14 @@ docker compose exec api python -c "import autosinapi; print(autosinapi.run_etl(s
 
 Gateway Kong, só se for expor publicamente: `docker compose --profile gateway up -d`.
 
+Busca por relevância (sem acento, melhores resultados primeiro) precisa das extensões
+`pg_trgm`/`unaccent`: um banco novo já nasce com elas (`docker/db/busca-trigram.sql`). Num
+volume criado antes disso, aplique uma vez:
+
+```bash
+docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < docker/db/busca-trigram.sql
+```
+
 ---
 
 ### 💡 O Fim da Dor de Cabeça Mensal

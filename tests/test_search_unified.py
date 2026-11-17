@@ -89,6 +89,24 @@ class TestSearchUnified:
         assert "ORDER BY score DESC" in sql
         assert "f_unaccent" in sql
 
+    def test_relevancia_desempata_por_frase_e_inicio_da_descricao(self):
+        db = self._db()
+        with patch.object(crud, "_trigram_enabled", return_value=True):
+            crud.search_unified(db, "massa unica", "RS", "2026-07", "NAO_DESONERADO", limit=10)
+            sql = str(db.execute.call_args[0][0])
+            params = db.execute.call_args[0][1]
+        assert "f_unaccent(:frase)" in sql
+        assert "f_unaccent(:inicio)" in sql
+        assert params["frase"] == "massa unica"
+        assert params["inicio"] == "massa%"
+
+    def test_sem_trigram_nao_usa_desempate(self):
+        db = self._db()
+        with patch.object(crud, "_trigram_enabled", return_value=False):
+            crud.search_unified(db, "concreto", "RS", "2026-07", "NAO_DESONERADO", limit=10)
+            sql = str(db.execute.call_args[0][0])
+        assert ":frase" not in sql
+
     def test_sort_price_asc(self):
         db = self._db()
         with patch.object(crud, "_trigram_enabled", return_value=True):

@@ -467,6 +467,19 @@ def search_unified(
         "regime": regime.upper(), "status": settings.DEFAULT_ITEM_STATUS,
         "skip": skip, "limit": limit,
     }
+
+    # Desempate de relevância: word_similarity dá a mesma nota a toda descrição
+    # que contém a palavra ("concreto" → todas 1.1, ordem alfabética). Somam-se
+    # a semelhança da frase inteira (descrições mais diretas sobem) e um bônus
+    # quando a descrição começa pelo primeiro termo ("CONCRETO FCK ..." primeiro).
+    if trigram and not score_expr.startswith("NULL"):
+        base = score_expr[: -len(" AS score")]
+        score_expr = (
+            f"({base} + similarity(f_unaccent(t.descricao), f_unaccent(:frase)) * 0.5"
+            " + CASE WHEN f_unaccent(t.descricao) ILIKE f_unaccent(:inicio) THEN 0.5 ELSE 0 END) AS score"
+        )
+        params["frase"] = term
+        params["inicio"] = f"{tokens[0]}%"
     if len(tokens) == 1:
         params["query"] = f"%{tokens[0]}%"
         if trigram and len(tokens[0]) >= 3:

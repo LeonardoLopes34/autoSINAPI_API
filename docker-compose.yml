@@ -11,6 +11,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/db/multiple-databases.sh:/docker-entrypoint-initdb.d/multiple-databases.sh
+      # Extensões da busca por relevância (só roda quando o volume do banco é criado).
+      - ./docker/db/busca-trigram.sql:/docker-entrypoint-initdb.d/busca-trigram.sql:ro
     #ports:
     #  - "127.0.0.1:5432:5432"
     restart: unless-stopped
